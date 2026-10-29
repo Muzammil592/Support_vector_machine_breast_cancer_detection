@@ -1,0 +1,27 @@
+# Data (keep folder, ignore contents)
+data/*
+!data/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Models and outputs
+*.pkl
+*.joblib
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
