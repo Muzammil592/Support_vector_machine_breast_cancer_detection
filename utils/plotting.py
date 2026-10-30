@@ -3,7 +3,10 @@ import matplotlib
 
 matplotlib.use("Agg")  # works without a display; remove if you want pop-up windows
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
+from matplotlib.colors import ListedColormap
+from sklearn.inspection import DecisionBoundaryDisplay
 from sklearn.metrics import ConfusionMatrixDisplay
 
 from utils.config import CLASS_NAMES, FIGURES_DIR, TARGET_COL
@@ -70,4 +73,66 @@ def plot_confusion_matrix(y_true, y_pred, name: str = "confusion_matrix.png",
         cmap="Blues", ax=ax)
     ax.set_title(title)
     ax.grid(False)
+    _save(fig, name)
+
+
+# ----------------------------- Day 2 plots -----------------------------
+
+def plot_kernel_comparison(df) -> None:
+    """Bar chart of cross-validated accuracy per kernel (error bars = std)."""
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    ax.bar(df["kernel"], df["cv_mean"], yerr=df["cv_std"], capsize=6,
+           color=sns.color_palette("Set2", len(df)))
+    ax.set_ylim(max(0, df["cv_mean"].min() - 0.05), 1.0)
+    ax.set_ylabel("5-fold CV accuracy")
+    ax.set_title("Kernel Comparison (default C and gamma)")
+    for i, v in enumerate(df["cv_mean"]):
+        ax.text(i, v + 0.004, f"{v:.3f}", ha="center")
+    _save(fig, "kernel_comparison.png")
+
+
+def plot_grid_heatmap(pivot, title: str, name: str) -> None:
+    """Heatmap of CV accuracy for a C x gamma grid."""
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    sns.heatmap(pivot, annot=True, fmt=".3f", cmap="viridis", ax=ax)
+    ax.set_title(title)
+    ax.set_xlabel("gamma")
+    ax.set_ylabel("C")
+    _save(fig, name)
+
+
+def plot_c_sweep(C_values, train_scores, cv_scores, n_support, n_train) -> None:
+    """Train vs CV accuracy, and support-vector count, as C changes."""
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.5))
+    axes[0].semilogx(C_values, train_scores, "o-", label="Train accuracy")
+    axes[0].semilogx(C_values, cv_scores, "s-", label="CV accuracy")
+    axes[0].set_xlabel("C (log scale)")
+    axes[0].set_ylabel("Accuracy")
+    axes[0].set_title("Effect of C on RBF SVM")
+    axes[0].legend()
+    axes[1].semilogx(C_values, np.array(n_support) / n_train * 100, "o-", color="tab:red")
+    axes[1].set_xlabel("C (log scale)")
+    axes[1].set_ylabel("Support vectors (% of training data)")
+    axes[1].set_title("Support Vectors vs C")
+    fig.tight_layout()
+    _save(fig, "c_sweep.png")
+
+
+def plot_decision_boundaries(models, X2, y, name: str, suptitle: str) -> None:
+    """Plot 2D decision boundaries. models = list of (title, fitted SVC)."""
+    cmap = ListedColormap(["#e15759", "#4e79a7"])  # malignant, benign
+    y = np.asarray(y)
+    fig, axes = plt.subplots(1, len(models), figsize=(6 * len(models), 5))
+    axes = np.atleast_1d(axes)
+    for ax, (title, model) in zip(axes, models):
+        DecisionBoundaryDisplay.from_estimator(
+            model, X2, response_method="predict", cmap=cmap, alpha=0.25,
+            ax=ax, xlabel="PC1", ylabel="PC2")
+        ax.scatter(X2[:, 0], X2[:, 1], c=y, cmap=cmap, edgecolors="white", s=25)
+        ax.scatter(model.support_vectors_[:, 0], model.support_vectors_[:, 1],
+                   s=90, facecolors="none", edgecolors="k", linewidths=0.8)
+        ax.set_title(f"{title}\n{len(model.support_vectors_)} support vectors")
+    fig.suptitle(suptitle + "  (red = malignant, blue = benign, circled = support vectors)",
+                 fontsize=12)
+    fig.tight_layout()
     _save(fig, name)
