@@ -7,7 +7,8 @@ import numpy as np
 import seaborn as sns
 from matplotlib.colors import ListedColormap
 from sklearn.inspection import DecisionBoundaryDisplay
-from sklearn.metrics import ConfusionMatrixDisplay
+from sklearn.metrics import (ConfusionMatrixDisplay, precision_recall_curve,
+                             roc_auc_score, roc_curve, average_precision_score)
 
 from utils.config import CLASS_NAMES, FIGURES_DIR, TARGET_COL
 
@@ -135,4 +136,96 @@ def plot_decision_boundaries(models, X2, y, name: str, suptitle: str) -> None:
     fig.suptitle(suptitle + "  (red = malignant, blue = benign, circled = support vectors)",
                  fontsize=12)
     fig.tight_layout()
+    _save(fig, name)
+
+
+# ----------------------------- Day 3 plots -----------------------------
+# In all Day 3 plots, MALIGNANT is the positive class and `scores` are malignant scores.
+
+def plot_roc_curves(curves, name: str = "roc_curve.png", marks=None,
+                    title: str = "ROC Curve (malignant = positive)") -> None:
+    """curves = [(label, y_true, scores)]; marks = [(fpr, tpr, label)] operating points."""
+    fig, ax = plt.subplots(figsize=(6.5, 6))
+    for label, y, s in curves:
+        pos = np.asarray(y) == 0
+        fpr, tpr, _ = roc_curve(pos, s)
+        ax.plot(fpr, tpr, lw=2, label=f"{label} (AUC = {roc_auc_score(pos, s):.3f})")
+    ax.plot([0, 1], [0, 1], "k--", alpha=0.4, label="Chance")
+    mark_colors = ["tab:green", "tab:red", "tab:purple", "tab:orange"]
+    for (fpr, tpr, label), color in zip(marks or [], mark_colors):
+        ax.scatter([fpr], [tpr], s=90, zorder=5, label=label, color=color, edgecolors="k")
+    ax.set_xlabel("False positive rate (benign flagged as malignant)")
+    ax.set_ylabel("True positive rate (malignant caught)")
+    ax.set_title(title)
+    ax.legend(loc="lower right", fontsize=9)
+    _save(fig, name)
+
+
+def plot_pr_curves(curves, name: str = "pr_curve.png",
+                   title: str = "Precision-Recall Curve (malignant = positive)") -> None:
+    fig, ax = plt.subplots(figsize=(6.5, 6))
+    prevalence = None
+    for label, y, s in curves:
+        pos = np.asarray(y) == 0
+        prevalence = pos.mean()
+        prec, rec, _ = precision_recall_curve(pos, s)
+        ax.plot(rec, prec, lw=2, label=f"{label} (AP = {average_precision_score(pos, s):.3f})")
+    if prevalence is not None:
+        ax.axhline(prevalence, color="k", ls="--", alpha=0.4, label=f"Chance ({prevalence:.2f})")
+    ax.set_xlabel("Recall (malignant caught)")
+    ax.set_ylabel("Precision")
+    ax.set_ylim(0, 1.02)
+    ax.set_title(title)
+    ax.legend(loc="lower left", fontsize=9)
+    _save(fig, name)
+
+
+def plot_threshold_tradeoff(scores, y, t_default: float, t_chosen: float,
+                            name: str = "threshold_tradeoff.png") -> None:
+    """Recall and precision for malignant as the decision threshold moves."""
+    scores, y = np.asarray(scores), np.asarray(y)
+    ts = np.sort(np.unique(scores))
+    recall = [(scores[y == 0] >= t).mean() for t in ts]
+    precision = [(y[scores >= t] == 0).mean() if (scores >= t).any() else 1.0 for t in ts]
+    fig, ax = plt.subplots(figsize=(8, 4.8))
+    ax.plot(ts, recall, lw=2, label="Recall (cancers caught)")
+    ax.plot(ts, precision, lw=2, label="Precision")
+    ax.axvline(t_default, color="grey", ls="--", label=f"Default threshold ({t_default:.2f})")
+    ax.axvline(t_chosen, color="tab:red", ls="--", label=f"Chosen threshold ({t_chosen:.2f})")
+    ax.set_xlabel("Malignant-score threshold (predict malignant if score >= threshold)")
+    ax.set_ylabel("Rate")
+    ax.set_title("Threshold Trade-off (training data, out-of-fold scores)")
+    ax.legend(loc="lower left")
+    _save(fig, name)
+
+
+def plot_benchmark(df, name: str = "benchmark.png") -> None:
+    """Grouped bars: nested-CV accuracy, malignant recall, ROC AUC per model."""
+    metrics = [("accuracy", "Accuracy"), ("recall_malignant", "Malignant recall"),
+               ("roc_auc", "ROC AUC")]
+    fig, ax = plt.subplots(figsize=(9, 5))
+    width = 0.8 / len(metrics)
+    x = np.arange(len(df))
+    for i, (col, label) in enumerate(metrics):
+        ax.bar(x + i * width, df[f"{col}_mean"], width, yerr=df[f"{col}_std"],
+               capsize=4, label=label)
+    ax.set_xticks(x + width * (len(metrics) - 1) / 2)
+    ax.set_xticklabels(df["model"])
+    ax.set_ylim(0.9, 1.01)
+    ax.set_ylabel("Score (nested CV, mean +/- std)")
+    ax.set_title("Model Benchmark")
+    ax.legend(loc="lower right")
+    _save(fig, name)
+
+
+def plot_feature_importance(series, name: str = "feature_importance.png",
+                            title: str = "Top features", n: int = 10) -> None:
+    """Horizontal bars. Positive = pushes toward malignant."""
+    top = series.reindex(series.abs().sort_values(ascending=False).index)[:n][::-1]
+    colors = ["#e15759" if v > 0 else "#4e79a7" for v in top]
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.barh(top.index, top.values, color=colors)
+    ax.axvline(0, color="k", lw=0.8)
+    ax.set_xlabel("Weight (red = toward malignant, blue = toward benign)")
+    ax.set_title(title)
     _save(fig, name)
